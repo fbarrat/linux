@@ -1228,7 +1228,6 @@ int hash_page_mm(struct mm_struct *mm, unsigned long ea,
 	unsigned long vsid;
 	pte_t *ptep;
 	unsigned hugeshift;
-	const struct cpumask *tmp;
 	int rc, user_region = 0;
 	int psize, ssize;
 
@@ -1280,8 +1279,7 @@ int hash_page_mm(struct mm_struct *mm, unsigned long ea,
 	}
 
 	/* Check CPU locality */
-	tmp = cpumask_of(smp_processor_id());
-	if (user_region && cpumask_equal(mm_cpumask(mm), tmp))
+	if (user_region && mm_is_thread_local(mm))
 		flags |= HPTE_LOCAL_UPDATE;
 
 #ifndef CONFIG_PPC_64K_PAGES
@@ -1543,7 +1541,7 @@ void hash_preload(struct mm_struct *mm, unsigned long ea,
 #endif /* CONFIG_PPC_64K_PAGES */
 
 	/* Is that local to this CPU ? */
-	if (cpumask_equal(mm_cpumask(mm), cpumask_of(smp_processor_id())))
+	if (mm_is_thread_local(mm))
 		update_flags |= HPTE_LOCAL_UPDATE;
 
 	/* Hash it in */
