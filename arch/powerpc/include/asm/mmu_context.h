@@ -78,6 +78,41 @@ extern int use_cop(unsigned long acop, struct mm_struct *mm);
 extern void drop_cop(unsigned long acop, struct mm_struct *mm);
 
 
+#ifdef CONFIG_PPC_BOOK3S_64
+static inline void inc_mm_active_cpus(struct mm_struct *mm)
+{
+	atomic_inc(&mm->context.active_cpus);
+}
+
+static inline void dec_mm_active_cpus(struct mm_struct *mm)
+{
+	atomic_dec(&mm->context.active_cpus);
+}
+
+static inline void mm_context_add_copro(struct mm_struct *mm)
+{
+	inc_mm_active_cpus(mm);
+}
+
+static inline void mm_context_remove_copro(struct mm_struct *mm)
+{
+	/*
+	 * Need to broadcast a global flush of the full mm before
+	 * decrementing active_cpus count, as the next TLBI may be
+	 * local and the nMMU and/or PSL need to be cleaned up.
+	 * Should be rare enough so that it's acceptable.
+	 */
+	flush_tlb_mm(mm);
+	dec_mm_active_cpus(mm);
+}
+#else
+static inline void inc_mm_active_cpus(struct mm_struct *mm) { }
+static inline void dec_mm_active_cpus(struct mm_struct *mm) { }
+static inline void mm_context_add_copro(struct mm_struct *mm) { }
+static inline void mm_context_remove_copro(struct mm_struct *mm) { }
+#endif
+
+
 extern void switch_mm_irqs_off(struct mm_struct *prev, struct mm_struct *next,
 			       struct task_struct *tsk);
 
