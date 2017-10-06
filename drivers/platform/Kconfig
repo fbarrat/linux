@@ -4,6 +4,9 @@ endif
 if MIPS
 source "drivers/platform/mips/Kconfig"
 endif
+if PPC64
+source "drivers/platform/ppc64/Kconfig"
+endif
 
 source "drivers/platform/goldfish/Kconfig"
 

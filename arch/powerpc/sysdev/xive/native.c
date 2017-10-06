@@ -22,6 +22,7 @@
 #include <linux/delay.h>
 #include <linux/cpumask.h>
 #include <linux/mm.h>
+#include <linux/of_platform.h>
 
 #include <asm/prom.h>
 #include <asm/io.h>
@@ -714,3 +715,24 @@ int xive_native_get_vp_info(u32 vp_id, u32 *out_cam_id, u32 *out_chip_id)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(xive_native_get_vp_info);
+
+static int xive_device_init(void)
+{
+	struct device_node *np;
+	struct platform_device *dev;
+	int rc = 0;
+
+	if (xive_enabled()) {
+		np = of_find_compatible_node(NULL, NULL, "ibm,opal-xive-pe");
+		if (!np)
+			return -ENODEV;
+
+		dev = of_platform_device_create(np, NULL, NULL);
+		if (!dev)
+			return -ENODEV;
+
+		pr_debug("Created xive platform device\n");
+	}
+	return rc;
+}
+device_initcall(xive_device_init);

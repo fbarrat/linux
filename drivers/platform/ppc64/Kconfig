@@ -1,0 +1,24 @@
+#
+# PPC64 Platform Specific Drivers
+#
+
+menuconfig PPC64_PLATFORM_DEVICES
+	bool "Platform Specific Device Drivers for PPC64"
+	default y
+	help
+	  Say Y here to get to see options for device drivers of various
+	  ppc64 platforms. This option itself does not add any
+	  kernel code.
+
+	  If you say N, all options in this submenu will be skipped and disabled.
+
+if PPC64_PLATFORM_DEVICES
+
+config PPC_USRIRQ
+	tristate "User IRQ Driver"
+	depends on PPC_XIVE_NATIVE
+	default m
+	help
+	  Driver to map IRQ to user space
+
+endif # PPC64_PLATFORM_DEVICES

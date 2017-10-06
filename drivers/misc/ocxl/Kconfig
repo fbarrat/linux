@@ -1,0 +1,25 @@
+#
+# Open Coherent Accelerator (OCXL) compatible devices
+#
+
+config OCXL_BASE
+	bool
+	default n
+	select PPC_COPRO_BASE
+
+config OCXL
+	tristate "Support for Open Coherent Accelerators (OCXL)"
+	depends on PPC_POWERNV && PCI && EEH
+	select OCXL_BASE
+	default m
+	help
+
+	  Select this option to enable driver support for Open
+	  Coherent Accelerators (OCXL).  OCXL is otherwise known as
+	  Open Coherent Accelerator Processor Interface (OCAPI).
+	  OCAPI allows accelerators in FPGAs to be coherently attached
+	  to a CPU through a Open CAPI link.  This driver enables
+	  userspace programs to access these accelerators through
+	  devices found in /dev/ocxl/
+
+	  If unsure, say N.
