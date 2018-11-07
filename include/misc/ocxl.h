@@ -213,6 +213,24 @@ int ocxl_irq_set_handler(struct ocxl_context *ctx, int irq_id,
 // AFU Metadata
 
 /**
+ * Map the LPC system & special purpose memory for an AFU
+ *
+ * Do not call this during device discovery, as there may me multiple
+ * devices on a link, and the memory is mapped for the whole link, not
+ * just one device. It should only be called after all devices have
+ * registered their memory on the link.
+ *
+ * afu: The AFU that has the LPC memory to map
+ */
+extern int ocxl_afu_map_lpc_mem(struct ocxl_afu *afu);
+
+/**
+ * Get the physical address range of LPC memory for an AFU
+ * afu: The AFU associated with the LPC memory
+ */
+extern struct resource *ocxl_afu_lpc_mem(struct ocxl_afu *afu);
+
+/**
  * Get a pointer to the config for an AFU
  *
  * @afu: a pointer to the AFU to get the config for
