@@ -43,9 +43,13 @@ struct ocxl_ioctl_metadata {
 	__u64 pp_mmio_size;	/* Per PASID MMIO size */
 	__u64 global_mmio_size;
 
-	/* End version 0 fields */
+	// Version 1 fields
+	__u64 lpc_mem_size;
+	__u64 special_purpose_mem_size;
+	__u64 serial;		// Device serial number
+	// End version 1 fields
 
-	__u64 reserved[13]; /* Total of 16*u64 */
+	__u64 reserved[10]; // Total of 16*u64
 };
 
 struct ocxl_ioctl_p9_wait {

@@ -98,13 +98,14 @@ static long afu_ioctl_get_metadata(struct ocxl_context *ctx,
 
 	memset(&arg, 0, sizeof(arg));
 
-	arg.version = 0;
+	arg.version = 1;
 
 	arg.afu_version_major = ctx->afu->config.version_major;
 	arg.afu_version_minor = ctx->afu->config.version_minor;
 	arg.pasid = ctx->pasid;
 	arg.pp_mmio_size = ctx->afu->config.pp_mmio_stride;
 	arg.global_mmio_size = ctx->afu->config.global_mmio_size;
+	arg.serial = ctx->afu->fn->config.serial;
 
 	if (copy_to_user(uarg, &arg, sizeof(arg)))
 		return -EFAULT;
