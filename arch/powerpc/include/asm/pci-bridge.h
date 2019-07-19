@@ -44,6 +44,12 @@ struct pci_controller_ops {
 #endif
 
 	void		(*shutdown)(struct pci_controller *hose);
+	int		(*dma_map_resource)(struct pci_dev *pdev,
+					    phys_addr_t phys_addr, size_t size,
+					    enum dma_data_direction dir);
+	void		(*dma_unmap_resource)(struct pci_dev *pdev,
+					      dma_addr_t addr, size_t size,
+					      enum dma_data_direction dir);
 };
 
 /*
