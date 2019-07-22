@@ -3606,7 +3606,7 @@ static void pnv_pci_ioda_shutdown(struct pci_controller *hose)
 		       OPAL_ASSERT_RESET);
 }
 
-int pnv_pci_ioda_set_p2p(struct pci_dev *initiator,
+static int pnv_pci_ioda_set_p2p(struct pci_dev *initiator,
 				struct pnv_phb *phb_target,
 				u64 desc)
 {
@@ -3677,6 +3677,91 @@ out:
 	return rc;
 }
 
+static bool pnv_pci_controller_owns_addr(struct pci_controller *hose,
+					 phys_addr_t addr, size_t size)
+{
+	struct resource *r;
+	int i;
+
+	/*
+	 * it seems safe to assume the full range is under the same
+	 * PHB, so we can ignore the size
+	 */
+	for (i = 0; i < 3; i++) {
+		r = &hose->mem_resources[i];
+		if (r->flags && (addr >= r->start) && (addr < r->end))
+			return true;
+	}
+	return false;
+}
+
+/*
+ * find the phb owning a mmio address if not owned locally
+ */
+static struct pnv_phb *pnv_pci_find_owning_phb(struct pci_dev *pdev,
+					       phys_addr_t addr, size_t size)
+{
+	struct pci_controller *hose = pci_bus_to_host(pdev->bus);
+	struct pnv_phb *phb;
+
+	/* fast path */
+	if (pnv_pci_controller_owns_addr(hose, addr, size))
+		return NULL;
+
+	list_for_each_entry(hose, &hose_list, list_node) {
+		phb = hose->private_data;
+		if (phb->type != PNV_PHB_NPU_NVLINK &&
+		    phb->type != PNV_PHB_NPU_OCAPI) {
+			if (pnv_pci_controller_owns_addr(hose, addr, size))
+				return phb;
+		}
+	}
+	return NULL;
+}
+
+static int pnv_pci_dma_map_resource(struct pci_dev *pdev,
+				    phys_addr_t phys_addr, size_t size,
+				    enum dma_data_direction dir)
+{
+	struct pnv_phb *target_phb;
+	int rc;
+	u64 desc;
+
+	target_phb = pnv_pci_find_owning_phb(pdev, phys_addr, size);
+	if (target_phb) {
+		desc = OPAL_PCI_P2P_ENABLE;
+		if (dir == DMA_TO_DEVICE)
+			desc |= OPAL_PCI_P2P_STORE;
+		else if (dir == DMA_FROM_DEVICE)
+			desc |= OPAL_PCI_P2P_LOAD;
+		else if (dir == DMA_BIDIRECTIONAL)
+			desc |= OPAL_PCI_P2P_LOAD | OPAL_PCI_P2P_STORE;
+		rc = pnv_pci_ioda_set_p2p(pdev, target_phb, desc);
+		if (rc) {
+			dev_err(&pdev->dev, "Failed to setup PCI peer-to-peer for address %llx: %d\n",
+				phys_addr, rc);
+			return rc;
+		}
+	}
+	return 0;
+}
+
+static void pnv_pci_dma_unmap_resource(struct pci_dev *pdev,
+				       dma_addr_t addr, size_t size,
+				       enum dma_data_direction dir)
+{
+	struct pnv_phb *target_phb;
+	int rc;
+
+	target_phb = pnv_pci_find_owning_phb(pdev, addr, size);
+	if (target_phb) {
+		rc = pnv_pci_ioda_set_p2p(pdev, target_phb, 0);
+		if (rc)
+			dev_err(&pdev->dev, "Failed to undo PCI peer-to-peer setup for address %llx: %d\n",
+				addr, rc);
+	}
+}
+
 static const struct pci_controller_ops pnv_pci_ioda_controller_ops = {
 	.dma_dev_setup		= pnv_pci_dma_dev_setup,
 	.dma_bus_setup		= pnv_pci_dma_bus_setup,
@@ -3689,6 +3774,8 @@ static const struct pci_controller_ops pnv_pci_ioda_controller_ops = {
 	.setup_bridge		= pnv_pci_setup_bridge,
 	.reset_secondary_bus	= pnv_pci_reset_secondary_bus,
 	.shutdown		= pnv_pci_ioda_shutdown,
+	.dma_map_resource	= pnv_pci_dma_map_resource,
+	.dma_unmap_resource	= pnv_pci_dma_unmap_resource,
 };
 
 static const struct pci_controller_ops pnv_npu_ioda_controller_ops = {
