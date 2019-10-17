@@ -3,6 +3,9 @@
 #include <asm/pnv-ocxl.h>
 #include <asm/opal.h>
 #include <asm/xive.h>
+#ifdef CONFIG_MEMORY_HOTPLUG
+#include <linux/memory.h>
+#endif
 #include <misc/ocxl-config.h>
 #include "pci.h"
 
@@ -554,3 +557,24 @@ void pnv_ocxl_free_xive_irq(u32 irq)
 	xive_native_free_irq(irq);
 }
 EXPORT_SYMBOL_GPL(pnv_ocxl_free_xive_irq);
+
+#ifdef CONFIG_MEMORY_HOTPLUG
+static int online_mem_block(struct memory_block *mem, void *arg)
+{
+	/* mem->online_type is protected by device_hotplug_lock */
+	mem->online_type = MMOP_ONLINE_MOVABLE;
+
+	return device_online(&mem->dev);
+}
+
+int pnv_ocxl_online_memory(u64 start, u64 size)
+{
+	int rc;
+
+	lock_device_hotplug();
+	rc = walk_memory_blocks(start, size, NULL, online_mem_block);
+	unlock_device_hotplug();
+	return rc;
+}
+EXPORT_SYMBOL_GPL(pnv_ocxl_online_memory);
+#endif
