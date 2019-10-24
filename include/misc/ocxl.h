@@ -46,6 +46,7 @@ struct ocxl_fn_config {
 	int dvsec_afu_info_pos; /* offset of the AFU information DVSEC */
 	s8 max_pasid_log;
 	s8 max_afu_index;
+	u64 serial;
 };
 
 enum ocxl_endian {
