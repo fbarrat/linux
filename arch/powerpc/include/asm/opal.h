@@ -39,6 +39,9 @@ int64_t opal_npu_spa_clear_cache(uint64_t phb_id, uint32_t bdfn,
 				uint64_t PE_handle);
 int64_t opal_npu_tl_set(uint64_t phb_id, uint32_t bdfn, long cap,
 			uint64_t rate_phys, uint32_t size);
+int64_t opal_npu_mem_alloc(uint64_t phb_id, uint32_t bdfn,
+			uint64_t size, uint64_t *bar);
+int64_t opal_npu_mem_release(uint64_t phb_id, uint32_t bdfn);
 
 int64_t opal_console_write(int64_t term_number, __be64 *length,
 			   const uint8_t *buffer);
