@@ -71,6 +71,51 @@ static int find_dvsec_afu_ctrl(struct pci_dev *dev, u8 afu_idx)
 	return 0;
 }
 
+/**
+ * Find a related PCI device (function 0)
+ * @device: PCI device to match
+ *
+ * Returns a pointer to the related device, or null if not found
+ */
+static struct pci_dev *get_function_0(struct pci_dev *dev)
+{
+	unsigned int devfn = PCI_DEVFN(PCI_SLOT(dev->devfn), 0); // Look for function 0
+
+	return pci_get_domain_bus_and_slot(pci_domain_nr(dev->bus),
+					dev->bus->number, devfn);
+}
+
+static void read_serial(struct pci_dev *dev, struct ocxl_fn_config *fn)
+{
+	u32 low, high;
+	int pos;
+
+	pos = pci_find_ext_capability(dev, PCI_EXT_CAP_ID_DSN);
+	if (pos) {
+		pci_read_config_dword(dev, pos + 0x04, &low);
+		pci_read_config_dword(dev, pos + 0x08, &high);
+
+		fn->serial = low | ((u64)high) << 32;
+
+		return;
+	}
+
+	if (PCI_FUNC(dev->devfn) != 0) {
+		struct pci_dev *related = get_function_0(dev);
+
+		if (!related) {
+			fn->serial = 0;
+			return;
+		}
+
+		read_serial(related, fn);
+		pci_dev_put(related);
+		return;
+	}
+
+	fn->serial = 0;
+}
+
 static void read_pasid(struct pci_dev *dev, struct ocxl_fn_config *fn)
 {
 	u16 val;
@@ -208,6 +253,7 @@ int ocxl_config_read_function(struct pci_dev *dev, struct ocxl_fn_config *fn)
 	int rc;
 
 	read_pasid(dev, fn);
+	read_serial(dev, fn);
 
 	rc = read_dvsec_tl(dev, fn);
 	if (rc) {
