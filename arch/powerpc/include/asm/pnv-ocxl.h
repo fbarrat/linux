@@ -32,5 +32,7 @@ extern int pnv_ocxl_spa_remove_pe_from_cache(void *platform_data, int pe_handle)
 
 extern int pnv_ocxl_alloc_xive_irq(u32 *irq, u64 *trigger_addr);
 extern void pnv_ocxl_free_xive_irq(u32 irq);
+extern u64 pnv_ocxl_platform_lpc_setup(struct pci_dev *pdev, u64 size);
+extern void pnv_ocxl_platform_lpc_release(struct pci_dev *pdev);
 
 #endif /* _ASM_PNV_OCXL_H */
