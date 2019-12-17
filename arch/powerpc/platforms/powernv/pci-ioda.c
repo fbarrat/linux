@@ -2327,9 +2327,10 @@ static void pnv_pci_ioda2_set_bypass(struct pnv_ioda_pe *pe, bool enable)
 
 	pe_info(pe, "%sabling 64-bit DMA bypass\n", enable ? "En" : "Dis");
 	if (enable) {
-		phys_addr_t top = memblock_end_of_DRAM();
-
-		top = roundup_pow_of_two(top);
+		/* phys_addr_t top = memblock_end_of_DRAM();
+		   top = roundup_pow_of_two(top); */
+		phys_addr_t top = 0x2240000000000;
+		printk("fxb forcing top of DRAM to max opencapi range=%llx\n", top);
 		rc = opal_pci_map_pe_dma_window_real(pe->phb->opal_id,
 						     pe->pe_number,
 						     window_id,
