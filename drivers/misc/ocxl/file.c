@@ -109,6 +109,8 @@ static long afu_ioctl_get_metadata(struct ocxl_context *ctx,
 	arg.pp_mmio_size = ctx->afu->config.pp_mmio_stride;
 	arg.global_mmio_size = ctx->afu->config.global_mmio_size;
 	arg.serial = ctx->afu->fn->config.serial;
+	arg.lpc_mem_size = ctx->afu->config.lpc_mem_size;
+	arg.special_purpose_mem_size = ctx->afu->config.special_purpose_mem_size;
 
 	if (copy_to_user(uarg, &arg, sizeof(arg)))
 		return -EFAULT;

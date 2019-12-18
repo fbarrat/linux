@@ -106,6 +106,138 @@ static int global_mmio_mmap(struct file *filp, struct kobject *kobj,
 	return 0;
 }
 
+static ssize_t lpc_mem_read(struct file *filp, struct kobject *kobj,
+				struct bin_attribute *bin_attr, char *buf,
+				loff_t off, size_t count)
+{
+	struct ocxl_afu *afu = to_afu(kobj_to_dev(kobj));
+
+	if (afu->lpc_res.start == 0) {
+		int rc = ocxl_afu_map_lpc_mem(afu);
+
+		if (rc)
+			return rc;
+	}
+
+	if (count == 0 || off < 0 || off >= afu->config.lpc_mem_size)
+		return 0;
+	memcpy_fromio(buf, (void *)(afu->lpc_res.start + off), count);
+	return count;
+}
+
+static unsigned int lpc_mem_fault(struct vm_fault *vmf)
+{
+	struct vm_area_struct *vma = vmf->vma;
+	struct ocxl_afu *afu = vma->vm_private_data;
+	unsigned long offset;
+
+	if (vmf->pgoff >= (afu->config.lpc_mem_size >> PAGE_SHIFT))
+		return VM_FAULT_SIGBUS;
+
+	offset = vmf->pgoff;
+	offset += (afu->lpc_res.start >> PAGE_SHIFT);
+	return vmf_insert_pfn(vma, vmf->address, offset);
+}
+
+static const struct vm_operations_struct lpc_mem_vmops = {
+	.fault = lpc_mem_fault,
+};
+
+static int lpc_mem_mmap(struct file *filp, struct kobject *kobj,
+			struct bin_attribute *bin_attr,
+			struct vm_area_struct *vma)
+{
+	struct ocxl_afu *afu = to_afu(kobj_to_dev(kobj));
+	bool uncached = filp->f_flags & O_DIRECT;
+	int rc;
+
+	if (afu->lpc_res.start == 0) {
+		rc = ocxl_afu_map_lpc_mem(afu);
+		if (rc)
+			return rc;
+	}
+
+	if ((u64)(vma_pages(vma) + vma->vm_pgoff) > (afu->config.lpc_mem_size >> PAGE_SHIFT))
+		return -EINVAL;
+
+	vma->vm_flags |= VM_PFNMAP;
+	vma->vm_ops = &lpc_mem_vmops;
+	vma->vm_private_data = afu;
+
+	if (uncached) {
+		vma->vm_flags |= VM_IO;
+		vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
+	}
+
+	return 0;
+}
+
+static ssize_t special_purpose_mem_read(struct file *filp, struct kobject *kobj,
+				struct bin_attribute *bin_attr, char *buf,
+				loff_t off, size_t count)
+{
+	struct ocxl_afu *afu = to_afu(kobj_to_dev(kobj));
+
+	if (afu->special_purpose_res.start == 0) {
+		int rc = ocxl_afu_map_lpc_mem(afu);
+
+		if (rc)
+			return rc;
+	}
+
+	if (count == 0 || off < 0 || off >= afu->config.special_purpose_mem_size)
+		return 0;
+	memcpy_fromio(buf, (void *)(afu->special_purpose_res.start + off), count);
+	return count;
+}
+
+static unsigned int special_purpose_mem_fault(struct vm_fault *vmf)
+{
+	struct vm_area_struct *vma = vmf->vma;
+	struct ocxl_afu *afu = vma->vm_private_data;
+	unsigned long offset;
+
+	if (vmf->pgoff >= (afu->config.special_purpose_mem_size >> PAGE_SHIFT))
+		return VM_FAULT_SIGBUS;
+
+	offset = vmf->pgoff;
+	offset += (afu->special_purpose_res.start >> PAGE_SHIFT);
+	return vmf_insert_pfn(vma, vmf->address, offset);
+}
+
+static const struct vm_operations_struct special_purpose_mem_vmops = {
+	.fault = special_purpose_mem_fault,
+};
+
+static int special_purpose_mem_mmap(struct file *filp, struct kobject *kobj,
+			struct bin_attribute *bin_attr,
+			struct vm_area_struct *vma)
+{
+	struct ocxl_afu *afu = to_afu(kobj_to_dev(kobj));
+	bool uncached = filp->f_flags & O_DIRECT;
+
+	if (afu->special_purpose_res.start == 0) {
+		int rc = ocxl_afu_map_lpc_mem(afu);
+
+		if (rc)
+			return rc;
+	}
+
+	if ((vma_pages(vma) + vma->vm_pgoff) > (afu->config.special_purpose_mem_size >> PAGE_SHIFT))
+		return -EINVAL;
+
+	vma->vm_flags |= VM_PFNMAP;
+	vma->vm_ops = &special_purpose_mem_vmops;
+	vma->vm_private_data = afu;
+
+	if (uncached) {
+		vma->vm_flags |= VM_IO;
+		vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
+	}
+
+	return 0;
+}
+
 int ocxl_sysfs_register_afu(struct ocxl_file_info *info)
 {
 	int i, rc;
@@ -117,6 +249,7 @@ int ocxl_sysfs_register_afu(struct ocxl_file_info *info)
 	}
 
 	sysfs_attr_init(&info->attr_global_mmio.attr);
+	info->attr_global_mmio.private = NULL; // used as a marker to check for init
 	info->attr_global_mmio.attr.name = "global_mmio_area";
 	info->attr_global_mmio.attr.mode = 0600;
 	info->attr_global_mmio.size = info->afu->config.global_mmio_size;
@@ -128,11 +261,46 @@ int ocxl_sysfs_register_afu(struct ocxl_file_info *info)
 		goto err;
 	}
 
+	if (info->afu->config.lpc_mem_size) {
+		sysfs_attr_init(&info->attr_lpc_mem.attr);
+		info->attr_lpc_mem.private = NULL; // used as a marker to check for init
+		info->attr_lpc_mem.attr.name = "lpc_system_memory";
+		info->attr_lpc_mem.attr.mode = 0600;
+		info->attr_lpc_mem.size = info->afu->config.lpc_mem_size;
+		info->attr_lpc_mem.read = lpc_mem_read;
+		info->attr_lpc_mem.mmap = lpc_mem_mmap;
+		rc = device_create_bin_file(&info->dev, &info->attr_lpc_mem);
+		if (rc) {
+			dev_err(&info->dev, "Unable to create lpc memory attr for afu: %d\n", rc);
+			goto err;
+		}
+	}
+
+	if (info->afu->config.special_purpose_mem_size) {
+		sysfs_attr_init(&info->attr_special_purpose_mem.attr);
+		info->attr_special_purpose_mem.attr.name = "lpc_special_purpose_memory";
+		info->attr_special_purpose_mem.attr.mode = 0600;
+		info->attr_special_purpose_mem.size = info->afu->config.special_purpose_mem_size;
+		info->attr_special_purpose_mem.read = special_purpose_mem_read;
+		info->attr_special_purpose_mem.mmap = special_purpose_mem_mmap;
+		rc = device_create_bin_file(&info->dev, &info->attr_special_purpose_mem);
+		if (rc) {
+			dev_err(&info->dev, "Unable to create special purpose memory attr for afu: %d\n", rc);
+			goto err;
+		}
+	}
+
 	return 0;
 
 err:
 	for (i--; i >= 0; i--)
 		device_remove_file(&info->dev, &afu_attrs[i]);
+
+	if (info->attr_global_mmio.private)
+		device_remove_bin_file(&info->dev, &info->attr_global_mmio);
+
+	if (info->attr_lpc_mem.private)
+		device_remove_bin_file(&info->dev, &info->attr_lpc_mem);
 
 	return rc;
 }
@@ -148,4 +316,10 @@ void ocxl_sysfs_unregister_afu(struct ocxl_file_info *info)
 	for (i = 0; i < ARRAY_SIZE(afu_attrs); i++)
 		device_remove_file(&info->dev, &afu_attrs[i]);
 	device_remove_bin_file(&info->dev, &info->attr_global_mmio);
+
+	if (info->attr_lpc_mem.attr.name)
+		device_remove_bin_file(&info->dev, &info->attr_lpc_mem);
+
+	if (info->attr_special_purpose_mem.attr.name)
+		device_remove_bin_file(&info->dev, &info->attr_special_purpose_mem);
 }
