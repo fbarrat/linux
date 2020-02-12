@@ -579,6 +579,8 @@ int pnv_ocxl_online_memory(int nid, u64 start, u64 size)
 	lock_device_hotplug();
 	rc = walk_memory_blocks(start, size, NULL, online_mem_block);
 	unlock_device_hotplug();
+
+	pnv_pci_ioda2_reset_bypass_all_PEs();
 	return rc;
 }
 EXPORT_SYMBOL_GPL(pnv_ocxl_online_memory);
@@ -598,7 +600,12 @@ int pnv_ocxl_offline_memory(int nid, u64 start, u64 size)
 	if (rc)
 		return rc;
 
-	return remove_memory(nid, start, size);
+	rc = remove_memory(nid, start, size);
+	if (rc)
+		return rc;
+
+	pnv_pci_ioda2_reset_bypass_all_PEs();
+	return 0;
 }
 EXPORT_SYMBOL_GPL(pnv_ocxl_offline_memory);
 

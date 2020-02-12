@@ -2345,8 +2345,8 @@ static void pnv_pci_ioda2_set_bypass(struct pnv_ioda_pe *pe, bool enable)
 	pe_info(pe, "%sabling 64-bit DMA bypass\n", enable ? "En" : "Dis");
 	if (enable) {
 		phys_addr_t top = memblock_end_of_DRAM();
-
-		top = roundup_pow_of_two(top);
+//		top = roundup_pow_of_two(top);
+		pr_info("fxb top of DRAM=%llx\n", top);
 		rc = opal_pci_map_pe_dma_window_real(pe->phb->opal_id,
 						     pe->pe_number,
 						     window_id,
@@ -2363,6 +2363,28 @@ static void pnv_pci_ioda2_set_bypass(struct pnv_ioda_pe *pe, bool enable)
 		pe_err(pe, "OPAL error %lld configuring bypass window\n", rc);
 	else
 		pe->tce_bypass_enabled = enable;
+}
+
+void pnv_pci_ioda2_reset_bypass_all_PEs(void)
+{
+	struct pci_controller *hose;
+	struct pnv_phb *phb;
+	struct pnv_ioda_pe *pe;
+
+	list_for_each_entry(hose, &hose_list, list_node) {
+		phb = hose->private_data;
+
+		if (phb->type == PNV_PHB_NPU_NVLINK ||
+		    phb->type == PNV_PHB_NPU_OCAPI)
+			continue;
+
+		mutex_lock(&phb->ioda.pe_list_mutex);
+		list_for_each_entry(pe, &phb->ioda.pe_list, list) {
+			if (pe->tce_bypass_enabled)
+				pnv_pci_ioda2_set_bypass(pe, true);
+		}
+		mutex_unlock(&phb->ioda.pe_list_mutex);
+	}
 }
 
 static long pnv_pci_ioda2_create_table(struct iommu_table_group *table_group,
