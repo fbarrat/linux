@@ -493,11 +493,12 @@ u64 pnv_ocxl_platform_lpc_setup(struct pci_dev *pdev, u64 size)
 
 	base_addr = be64_to_cpu(base_addr_be64);
 
+#ifdef CONFIG_MEMORY_HOTPLUG_SPARSE
 	rc = check_hotplug_memory_addressable(base_addr >> PAGE_SHIFT,
 					      size >> PAGE_SHIFT);
 	if (rc)
 		return 0;
-
+#endif
 	return base_addr;
 }
 EXPORT_SYMBOL_GPL(pnv_ocxl_platform_lpc_setup);
