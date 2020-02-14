@@ -57,6 +57,8 @@ struct ocxl_afu {
 	u64 lpc_base_addr; /* Covers both LPC & special purpose memory */
 	struct resource lpc_res;
 	struct resource special_purpose_res;
+	int lpc_numa_nid;
+	bool lpc_mem_online;
 };
 
 enum ocxl_context_status {
@@ -145,6 +147,11 @@ void ocxl_sysfs_unregister_afu(struct ocxl_file_info *info);
 int ocxl_irq_offset_to_id(struct ocxl_context *ctx, u64 offset);
 u64 ocxl_irq_id_to_offset(struct ocxl_context *ctx, int irq_id);
 void ocxl_afu_irq_free_all(struct ocxl_context *ctx);
+
+#ifdef CONFIG_MEMORY_HOTPLUG
+int ocxl_online_memory(struct ocxl_afu *afu);
+int ocxl_offline_memory(struct ocxl_afu *afu);
+#endif
 
 /**
  * ocxl_link_add_lpc_mem() - Increment the amount of memory required by an OpenCAPI link

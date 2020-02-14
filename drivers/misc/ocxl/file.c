@@ -177,14 +177,59 @@ static long afu_ioctl_get_features(struct ocxl_context *ctx,
 	return 0;
 }
 
+#ifdef CONFIG_MEMORY_HOTPLUG
+static long afu_ioctl_online_lpc_mem(struct ocxl_context *ctx,
+				     unsigned long arg)
+{
+	struct ocxl_afu *afu = ctx->afu;
+
+	/*
+	 * No flag supported for now. Could be used later to online
+	 * the memory as kernel instead of movable, or to skip
+	 * automatic onlining...
+	 */
+	if (arg)
+		return -EINVAL;
+
+	return ocxl_online_memory(afu);
+}
+
+static long afu_ioctl_offline_lpc_mem(struct ocxl_context *ctx,
+				      unsigned long arg)
+{
+	struct ocxl_afu *afu = ctx->afu;
+
+	return ocxl_offline_memory(afu);
+}
+#endif /* CONFIG_MEMORY_HOTPLUG */
+
+static long afu_ioctl_get_lpc_mem_info(struct ocxl_context *ctx,
+				       struct ocxl_ioctl_lpc_mem_info __user *uarg)
+{
+	struct ocxl_afu *afu = ctx->afu;
+	struct ocxl_ioctl_lpc_mem_info arg;
+
+	memset(&arg, 0, sizeof(arg));
+	arg.version = 0;
+	arg.nodeid = afu->lpc_numa_nid;
+
+	if (copy_to_user(uarg, &arg, sizeof(arg)))
+		return -EFAULT;
+
+	return 0;
+}
+
 #define CMD_STR(x) (x == OCXL_IOCTL_ATTACH ? "ATTACH" :			\
-			x == OCXL_IOCTL_IRQ_ALLOC ? "IRQ_ALLOC" :	\
-			x == OCXL_IOCTL_IRQ_FREE ? "IRQ_FREE" :		\
-			x == OCXL_IOCTL_IRQ_SET_FD ? "IRQ_SET_FD" :	\
-			x == OCXL_IOCTL_GET_METADATA ? "GET_METADATA" :	\
-			x == OCXL_IOCTL_ENABLE_P9_WAIT ? "ENABLE_P9_WAIT" :	\
-			x == OCXL_IOCTL_GET_FEATURES ? "GET_FEATURES" :	\
-			"UNKNOWN")
+		    x == OCXL_IOCTL_IRQ_ALLOC ? "IRQ_ALLOC" :		\
+		    x == OCXL_IOCTL_IRQ_FREE ? "IRQ_FREE" :		\
+		    x == OCXL_IOCTL_IRQ_SET_FD ? "IRQ_SET_FD" :		\
+		    x == OCXL_IOCTL_GET_METADATA ? "GET_METADATA" :	\
+		    x == OCXL_IOCTL_ENABLE_P9_WAIT ? "ENABLE_P9_WAIT" :	\
+		    x == OCXL_IOCTL_GET_FEATURES ? "GET_FEATURES" :	\
+		    x == OCXL_IOCTL_GET_LPC_MEM_INFO ? "GET_LPC_MEM_INFO" : \
+		    x == OCXL_IOCTL_ONLINE_LPC_MEM ? "ONLINE_LPC_MEM" :	\
+		    x == OCXL_IOCTL_OFFLINE_LPC_MEM ? "OFFLINE_LPC_MEM" : \
+		    "UNKNOWN")
 
 static irqreturn_t irq_handler(void *private)
 {
@@ -274,12 +319,27 @@ static long afu_ioctl(struct file *file, unsigned int cmd,
 		rc = afu_ioctl_enable_p9_wait(ctx,
 				(struct ocxl_ioctl_p9_wait __user *) args);
 		break;
+
+	case OCXL_IOCTL_GET_LPC_MEM_INFO:
+		rc = afu_ioctl_get_lpc_mem_info(ctx,
+				(struct ocxl_ioctl_lpc_mem_info __user *)args);
+		break;
 #endif
 
 	case OCXL_IOCTL_GET_FEATURES:
 		rc = afu_ioctl_get_features(ctx,
 				(struct ocxl_ioctl_features __user *) args);
 		break;
+
+#ifdef CONFIG_MEMORY_HOTPLUG
+	case OCXL_IOCTL_ONLINE_LPC_MEM:
+		rc = afu_ioctl_online_lpc_mem(ctx, args);
+		break;
+
+	case OCXL_IOCTL_OFFLINE_LPC_MEM:
+		rc = afu_ioctl_offline_lpc_mem(ctx, args);
+		break;
+#endif /* CONFIG_MEMORY_HOTPLUG */
 
 	default:
 		rc = -EINVAL;

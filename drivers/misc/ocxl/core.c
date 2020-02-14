@@ -2,6 +2,9 @@
 // Copyright 2019 IBM Corp.
 #include <linux/idr.h>
 #include "ocxl_internal.h"
+#ifdef CONFIG_MEMORY_HOTPLUG
+#include <asm/pnv-ocxl.h>
+#endif
 
 static struct ocxl_fn *ocxl_fn_get(struct ocxl_fn *fn)
 {
@@ -27,6 +30,7 @@ static struct ocxl_afu *alloc_afu(struct ocxl_fn *fn)
 	idr_init(&afu->contexts_idr);
 	afu->fn = fn;
 	ocxl_fn_get(fn);
+	afu->lpc_numa_nid = NUMA_NO_NODE;
 	return afu;
 }
 
@@ -243,9 +247,71 @@ struct resource *ocxl_afu_lpc_mem(struct ocxl_afu *afu)
 }
 EXPORT_SYMBOL_GPL(ocxl_afu_lpc_mem);
 
+static int get_numa_node_id(struct pci_dev *dev)
+{
+	struct device_node *dn_mem;
+
+	dn_mem = of_parse_phandle(dev->dev.of_node->parent, "memory-region", 0);
+	if (!dn_mem)
+		return NUMA_NO_NODE;
+
+	return of_node_to_nid(dn_mem);
+}
+
+#ifdef CONFIG_MEMORY_HOTPLUG
+int ocxl_online_memory(struct ocxl_afu *afu)
+{
+	int rc;
+
+	if (!afu->config.lpc_mem_size ||
+	    afu->lpc_numa_nid == NUMA_NO_NODE)
+		return -ENOENT;
+
+	if (afu->lpc_mem_online)
+		return -EEXIST;
+
+	if (!afu->lpc_res.start) {
+		rc = ocxl_afu_map_lpc_mem(afu);
+		if (rc)
+			return rc;
+	}
+
+	rc = pnv_ocxl_online_memory(afu->lpc_numa_nid, afu->lpc_res.start,
+				    afu->config.lpc_mem_size);
+	if (rc)
+		return rc;
+
+	afu->lpc_mem_online = true;
+	return 0;
+}
+
+int ocxl_offline_memory(struct ocxl_afu *afu)
+{
+	struct pci_dev *pci_dev = to_pci_dev(afu->fn->dev.parent);
+	int rc;
+
+	if (!afu->lpc_mem_online)
+		return -ENOENT;
+
+	rc = pnv_ocxl_offline_memory(afu->lpc_numa_nid, afu->lpc_res.start,
+				     afu->config.lpc_mem_size);
+	if (rc) {
+		dev_err(&pci_dev->dev, "Can't remove LPC memory: %d\n", rc);
+		return rc;
+	}
+
+	afu->lpc_mem_online = false;
+	return 0;
+}
+#endif /* CONFIG_MEMORY_HOTPLUG */
+
 static void unmap_lpc_mem(struct ocxl_afu *afu)
 {
 	struct pci_dev *dev = to_pci_dev(afu->fn->dev.parent);
+
+#ifdef CONFIG_MEMORY_HOTPLUG
+	(void)ocxl_offline_memory(afu);
+#endif
 
 	if (afu->lpc_res.start || afu->special_purpose_res.start) {
 		void *link = afu->fn->link;
@@ -285,6 +351,8 @@ static int configure_afu(struct ocxl_afu *afu, u8 afu_idx, struct pci_dev *dev)
 					   afu->config.special_purpose_mem_size);
 		if (rc)
 			goto err_free_mmio;
+
+		afu->lpc_numa_nid = get_numa_node_id(dev);
 	}
 
 	return 0;
